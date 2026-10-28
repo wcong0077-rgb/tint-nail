@@ -1,0 +1,10 @@
+{
+  "description": "This community website for nail art enthusiasts features a user-friendly landing page and homepage, facilitating navigation and engagement among members.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

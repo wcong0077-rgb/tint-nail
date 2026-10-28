@@ -1,0 +1,10 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Function icon" clip-path="url(#clip0_0_32)">
+<path id="Icon outline" d="M12 0.5004C8.25 0.5004 4.5 3.69484 4.5 6.88929C4.5 13.2782 7.5 19.6671 12 23.5004C16.5 19.6671 19.5 13.2782 19.5 6.88929C19.5 3.69484 15.75 0.5004 12 0.5004Z" stroke-width="1.5" stroke-linecap="round" stroke="#737373"/>
+</g>
+<defs>
+<clipPath id="clip0_0_32">
+<rect width="24" height="24" fill="white"/>
+</clipPath>
+</defs>
+</svg>
