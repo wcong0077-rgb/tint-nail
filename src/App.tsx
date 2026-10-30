@@ -40,6 +40,23 @@ const icons = {
 type Navigate = (route: string) => void;
 const getRoute = () => window.location.hash.replace(/^#\/?/, "");
 
+function usePageBlankDismiss(active: boolean, onDismiss: () => void) {
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  useEffect(() => {
+    if (!active) return;
+    const dismissOnBlank = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("button, a, input, textarea, select, label, [role='button'], [role='dialog'], [data-keep-active]")) return;
+      dismissRef.current();
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    };
+    document.addEventListener("pointerdown", dismissOnBlank);
+    return () => document.removeEventListener("pointerdown", dismissOnBlank);
+  }, [active]);
+}
+
 function Brand({ onClick, compact = false }: { onClick?: () => void; compact?: boolean }) {
   return (
     <button className={`brand ${compact ? "brand-compact" : ""}`} onClick={onClick} aria-label="Home">
@@ -73,15 +90,16 @@ function Tags({ tags }: { tags: readonly string[] }) {
 }
 
 function CollectionCard({ index, onOpen }: { index: number; onOpen: () => void }) {
+  const [liked, setLiked] = useState(false);
   return (
-    <article className="collection-card" onClick={onOpen} role="link" tabIndex={0}>
-      <div className={`placeholder cover shade-${index % 4}`}>image</div>
+    <article className="collection-card">
+      <button type="button" className={`placeholder cover shade-${index % 4} design-image-link`} onClick={onOpen} aria-label="Open Nail Design Title">image</button>
       <div className="collection-info">
         <strong>Nail Design Title</strong>
         <Tags tags={GENERIC_TAGS} />
         <div className="card-meta">
           <UserHover className="author"><i>U</i>Username</UserHover>
-          <span className="likes"><img src={index === 0 ? icons.heartDark : icons.heartLanding} alt="" />1.2K</span>
+          <button type="button" aria-label={liked ? "Unlike design" : "Like design"} aria-pressed={liked} className={liked ? "likes card-like like-control on" : "likes card-like like-control"} onClick={() => setLiked(!liked)}><img src={liked ? C.cardHeartFilled : index === 0 ? icons.heartDark : icons.heartLanding} alt="" />{liked ? "1.3K" : "1.2K"}</button>
         </div>
       </div>
     </article>
@@ -126,7 +144,7 @@ function AuthModal({ mode, onMode, onClose, onDone }: { mode: AuthMode; onMode: 
   const benefits = [
     ["✦", "Endless nail inspiration"],
     ["◈", "Make a design your own"],
-    ["◇", "Save your inspiration"],
+    ["◇", "Collect your inspiration"],
   ];
   return (
     <div className="auth-overlay" onMouseDown={onClose}>
@@ -142,7 +160,7 @@ function AuthModal({ mode, onMode, onClose, onDone }: { mode: AuthMode; onMode: 
             <button type="button" className={!register ? "active" : ""} onClick={() => onMode("login")}>Log in</button>
             <button type="button" className={register ? "active" : ""} onClick={() => onMode("register")}>Sign up</button>
           </div>
-          <header><h2>{register ? "Create your account" : "Welcome back"}</h2><p>{register ? "Sign up to save inspiration, follow creators, and share designs" : "Log in to explore more inspiration and start creating"}</p></header>
+          <header><h2>{register ? "Create your account" : "Welcome back"}</h2><p>{register ? "Sign up to collect inspiration, follow creators, and share designs" : "Log in to explore more inspiration and start creating"}</p></header>
           <div className="auth-fields">
             <label><span>{register ? "Phone / email" : "Email address"}</span><input autoFocus value={email} onChange={(e) => setEmail(e.target.value)} placeholder={register ? "Enter your phone number or email" : "Enter your email"} /></label>
             <label>
@@ -513,11 +531,11 @@ function DesignCard({ prominent = false, onOpen }: { item?: Design; prominent?: 
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   return (
-    <article className={prominent ? "community-card popular-card" : "community-card"} onClick={onOpen} role="link" tabIndex={0} onKeyDown={(e) => e.target === e.currentTarget && e.key === "Enter" && onOpen()}>
+    <article className={prominent ? "community-card popular-card" : "community-card"}>
       <div className="community-image img-ph">
-        <em>Image</em>
+        <button type="button" className="design-image-link" onClick={onOpen} aria-label="Open Nail Design Title"><em>Image</em></button>
         <button
-          aria-label={saved ? "Remove from saved" : "Save design"}
+          aria-label={saved ? "Remove from collected" : "Collect design"}
           aria-pressed={saved}
           className={saved ? "card-save on" : "card-save"}
           onClick={(e) => { e.stopPropagation(); setSaved(!saved); }}
@@ -534,7 +552,7 @@ function DesignCard({ prominent = false, onOpen }: { item?: Design; prominent?: 
           <button
             aria-label={liked ? "Unlike design" : "Like design"}
             aria-pressed={liked}
-            className={liked ? "likes card-like on" : "likes card-like"}
+            className={liked ? "likes card-like like-control on" : "likes card-like like-control"}
             onClick={(e) => { e.stopPropagation(); setLiked(!liked); }}
             type="button"
           >
@@ -562,6 +580,7 @@ function SearchBar({ initial = emptySearchState, navigate }: { initial?: SearchS
     { kind: "style", icon: `${A}account-4b14a.svg`, label: "Style" },
     { kind: "occasion", icon: `${A}account-f7b2e.svg`, label: "Occasion" },
   ];
+  usePageBlankDismiss(Boolean(open), () => setOpen(null));
   useEffect(() => {
     setQuery(initial.query);
     setSelected({ shape: initial.shape, style: initial.style, occasion: initial.occasion });
@@ -687,14 +706,15 @@ function FilterPanel({ kind, selected, onSelect, onClear, onApply }: {
 
 function Shell({ navigate, children, account = false, searchState = emptySearchState }: { navigate: Navigate; children: React.ReactNode; account?: boolean; searchState?: SearchState }) {
   const savedActive = getRoute() === "saved";
+  const uploadActive = getRoute() === "upload";
   return (
     <div className={account ? "community-page account-shell" : "community-page"}>
       <aside className="side-nav">
         <Brand compact onClick={() => navigate("landing")} />
         <div className="side-divider" />
         <nav>
-          <button className={!account && !savedActive ? "active" : ""} onClick={() => navigate("community")} aria-label="Home"><img src={`${A}account-4fffb.svg`} alt="" /></button>
-          <button className={savedActive ? "active" : ""} onClick={() => navigate("saved")} aria-label="Saved"><img src={`${A}account-17dcc.svg`} alt="" /></button>
+          <button className={!account && !savedActive && !uploadActive ? "active" : ""} onClick={() => navigate("community")} aria-label="Home"><img src={`${A}account-4fffb.svg`} alt="" /></button>
+          <button className={savedActive ? "active" : ""} onClick={() => navigate("saved")} aria-label="Collected"><img src={`${A}account-17dcc.svg`} alt="" /></button>
           <button aria-label="Design Studio"><img src={`${A}account-e11e9.svg`} alt="" /></button>
           <button aria-label="Device management"><img className="side-device-icon" src={`${A}account-device-machine.svg`} alt="" /></button>
           <button aria-label="Nail artists"><img src={`${A}account-5ae22.svg`} alt="" /></button>
@@ -706,10 +726,10 @@ function Shell({ navigate, children, account = false, searchState = emptySearchS
         <header className="community-header">
           <SearchBar initial={searchState} navigate={navigate} />
           <div className="community-actions">
-            <button className="upload">Upload design</button>
+            <button className="upload" onClick={() => navigate("upload")}>Upload design</button>
             <button className="circle-button" aria-label="Achievements"><img src={`${A}account-e6ce1.svg`} alt="" /></button>
-            <button className="circle-button" aria-label="Notifications" onClick={() => navigate("notifications/all")}><img src={`${A}account-48ef5.svg`} alt="" /></button>
-            <button className="circle-button" aria-label="Profile" onClick={() => navigate("profile/published")}><img src={`${A}97eda.svg`} alt="" /></button>
+            <NotificationQuickMenu navigate={navigate} />
+            <ProfileQuickMenu navigate={navigate} />
           </div>
         </header>
         {children}
@@ -718,17 +738,247 @@ function Shell({ navigate, children, account = false, searchState = emptySearchS
   );
 }
 
+const uploadPhotoSlots = [
+  ["Front view", "Required"],
+  ["Side view", "Required"],
+  ["5-nail detail", "Group 1 · Required"],
+  ["5-nail detail", "Group 2 · Required"],
+  ["Add photo", "Optional"],
+  ["Add photo", "Optional"],
+  ["Add photo", "Optional"],
+  ["Add photo", "Optional"],
+  ["Add photo", "Optional"],
+] as const;
+
+function UploadTagSelect({ label, placeholder, options, max = 1, initialSelected = [], onSelectionChange }: { label: string; placeholder: string; options: readonly string[]; max?: number; initialSelected?: string[]; onSelectionChange: (selected: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(initialSelected);
+  usePageBlankDismiss(open, () => setOpen(false));
+  const toggle = (option: string) => {
+    if (selected.includes(option)) {
+      const next = selected.filter((item) => item !== option);
+      setSelected(next);
+      onSelectionChange(next);
+      return;
+    }
+    if (selected.length >= max) return;
+    const next = [...selected, option];
+    setSelected(next);
+    onSelectionChange(next);
+    if (next.length === max) setOpen(false);
+  };
+  return (
+    <div className="upload-tag-field" onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && setOpen(false)}>
+      <span className="upload-tag-label">{label}{max > 1 && <small>Up to {max}</small>}</span>
+      <div
+        className={open ? "upload-tag-control open" : "upload-tag-control"}
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && setOpen(!open)}
+      >
+        <div className="upload-selected-tags">
+          {selected.length ? selected.map((item) => (
+            <button type="button" className="upload-tag-chip" aria-label={`Remove ${item}`} onClick={(event) => { event.stopPropagation(); toggle(item); }} key={item}>
+              {item}<i>×</i>
+            </button>
+          )) : <span>{placeholder}</span>}
+        </div>
+        <img className={open ? "open" : ""} src={`${A}70f7e.svg`} alt="" />
+      </div>
+      {open && (
+        <div className="upload-tag-menu">
+          {options.map((option) => {
+            const active = selected.includes(option);
+            const disabled = !active && selected.length >= max;
+            return <button type="button" className={active ? "active" : ""} disabled={disabled} onClick={() => toggle(option)} key={option}><span>{option}</span>{active && <i>✓</i>}</button>;
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UploadDesignPage({ navigate, editing = false, studioEdited = false }: { navigate: Navigate; editing?: boolean; studioEdited?: boolean }) {
+  const hasStudioDesign = studioEdited;
+  const initialTags = editing
+    ? { shape: ["Almond"], style: ["Elegant"], occasion: ["Everyday"] }
+    : { shape: [] as string[], style: [] as string[], occasion: [] as string[] };
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [photos, setPhotos] = useState<string[]>(editing ? ["existing-cover", "existing-front", "existing-side", "existing-detail"] : []);
+  const [name, setName] = useState(editing ? "Moonlight Almond Ombre" : "");
+  const [description, setDescription] = useState(editing ? "A soft almond ombre with a clean, sheer finish." : "");
+  const [tags, setTags] = useState(initialTags);
+  const [source, setSource] = useState(editing ? "original" : "");
+  const [referenceLink, setReferenceLink] = useState("");
+  const [creatorName, setCreatorName] = useState("");
+  const [creatorLink, setCreatorLink] = useState("");
+  const [remakePermission, setRemakePermission] = useState<"allow" | "deny">("allow");
+  const [status, setStatus] = useState("");
+  const sourceComplete = source === "original"
+    || (source === "online" && Boolean(referenceLink.trim()))
+    || (source === "repost" && Boolean(creatorName.trim()) && Boolean(creatorLink.trim()));
+  const canSubmit = photos.length >= 4
+    && Boolean(name.trim())
+    && Boolean(description.trim())
+    && tags.shape.length > 0
+    && tags.style.length > 0
+    && tags.occasion.length > 0
+    && (hasStudioDesign || sourceComplete);
+  const addPhotos = (files: FileList | null) => {
+    if (!files) return;
+    setPhotos((current) => [...current, ...Array.from(files).map((file) => URL.createObjectURL(file))].slice(0, 9));
+  };
+  const removePhoto = (index: number) => {
+    setPhotos((current) => {
+      const photo = current[index];
+      if (photo?.startsWith("blob:")) URL.revokeObjectURL(photo);
+      return current.filter((_, photoIndex) => photoIndex !== index);
+    });
+  };
+  return (
+    <Shell navigate={navigate}>
+      <main className="upload-workspace">
+        <div className="upload-scroll">
+          <header className="upload-page-header">
+            <h1>{editing ? "Edit published design" : "Upload a nail design"}</h1>
+            <p>{editing ? "Update the details of your published work." : "Share a nail look with the community."}</p>
+          </header>
+          <div className="upload-layout">
+            <section className="upload-photos">
+              <div className="upload-section-heading"><strong>Design photos</strong><span>{photos.length} / 9</span></div>
+              <p>Upload 4–9 photos, including your cover.</p>
+              <div className="upload-cover">
+                {photos[0]?.startsWith("existing-") ? <span className="upload-existing-photo">Existing cover</span> : photos[0] ? <img className="upload-cover-photo" src={photos[0]} alt="Cover preview" /> : <img src={`${A}286e8.svg`} alt="" />}
+                {!photos[0] && <><strong>Cover preview</strong><span>Upload photos first, then choose one as cover.</span></>}
+                <small>Cover</small>
+              </div>
+              <input ref={fileInput} hidden type="file" accept="image/*" multiple onChange={(event) => addPhotos(event.target.files)} />
+              <div className="upload-photo-grid">
+                {uploadPhotoSlots.map(([label, hint], index) => (
+                  <button type="button" className={index < 4 ? "upload-photo-slot required" : "upload-photo-slot"} onClick={() => fileInput.current?.click()} key={index}>
+                    {photos[index]?.startsWith("existing-") ? <span className="upload-existing-photo">Existing photo</span> : photos[index] ? <img className="upload-slot-photo" src={photos[index]} alt={`${label} preview`} /> : <img src={`${A}${index < 4 ? "80c7c.svg" : "cdb63.svg"}`} alt="" />}
+                    {!photos[index] && <span>{label}<small>{hint}</small></span>}
+                    {photos[index] && <span className="upload-photo-remove" role="button" tabIndex={0} aria-label={`Remove ${label} photo`} onClick={(event) => { event.stopPropagation(); removePhoto(index); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); removePhoto(index); } }}>×</span>}
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className={hasStudioDesign ? "upload-form-panel" : "upload-form-panel source-mode"}>
+              <div className="upload-form-group">
+                <h2>Post information</h2>
+                <label className="upload-field"><span>Style name</span><div><input maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder="Name this nail style" /><small>{name.length}/50</small></div></label>
+                <label className="upload-field upload-description"><span>Description</span><div><textarea maxLength={150} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Briefly describe the look." /><small>{description.length}/150</small></div></label>
+              </div>
+              <div className="upload-form-group">
+                <h2>Tags</h2>
+                <div className="upload-tags-row">
+                  <UploadTagSelect label="Shape" placeholder="Select shapes" max={4} options={["Almond", "Square", "Round", "Stiletto"]} initialSelected={initialTags.shape} onSelectionChange={(selected) => setTags((current) => ({ ...current, shape: selected }))} />
+                  <UploadTagSelect label="Style" placeholder="Select styles" max={2} options={["Minimalist", "Glitter", "Elegant", "Fresh", "Punk", "Vintage"]} initialSelected={initialTags.style} onSelectionChange={(selected) => setTags((current) => ({ ...current, style: selected }))} />
+                  <UploadTagSelect label="Occasion" placeholder="Select occasions" max={2} options={["Everyday", "Party", "Wedding", "Office", "Evening", "Travel"]} initialSelected={initialTags.occasion} onSelectionChange={(selected) => setTags((current) => ({ ...current, occasion: selected }))} />
+                </div>
+              </div>
+              {!hasStudioDesign && <div className="upload-origin-grid">
+                <section className="upload-origin-card">
+                  <h2>Creation source</h2>
+                  <p>Choose the option that best describes where this design came from.</p>
+                  <fieldset className="upload-source">
+                    <div className="upload-source-row">
+                      <label className={source === "original" ? "selected" : ""}><input type="radio" name="image-source" checked={source === "original"} onChange={() => setSource("original")} /><span><strong>Original work</strong></span></label>
+                      {source === "original" && <p className="upload-original-note"><span>I confirm that this design and the uploaded images are my original work.</span></p>}
+                    </div>
+                    <div className="upload-source-row">
+                      <label className={source === "online" ? "selected" : ""}><input type="radio" name="image-source" checked={source === "online"} onChange={() => setSource("online")} /><span><strong>Online reference</strong></span></label>
+                      {source === "online" && <input className="upload-source-link" type="url" value={referenceLink} onChange={(event) => setReferenceLink(event.target.value)} placeholder="Add the reference link" />}
+                    </div>
+                    <div className="upload-source-row">
+                      <label className={source === "repost" ? "selected" : ""}><input type="radio" name="image-source" checked={source === "repost"} onChange={() => setSource("repost")} /><span><strong>Repost with credit</strong></span></label>
+                      {source === "repost" && <div className="upload-credit-fields"><input type="text" value={creatorName} onChange={(event) => setCreatorName(event.target.value)} placeholder="Original creator name" /><input type="url" value={creatorLink} onChange={(event) => setCreatorLink(event.target.value)} placeholder="Original post or creator link" /></div>}
+                    </div>
+                  </fieldset>
+                </section>
+              </div>}
+              {hasStudioDesign && (
+                <fieldset className="upload-remake-permission">
+                  <legend>One-click remake</legend>
+                  <div>
+                    <label><input type="radio" name="remake-permission" checked={remakePermission === "allow"} onChange={() => setRemakePermission("allow")} />Allow other users to remake this design</label>
+                      <label><input type="radio" name="remake-permission" checked={remakePermission === "deny"} onChange={() => setRemakePermission("deny")} />Don’t allow</label>
+                  </div>
+                </fieldset>
+              )}
+              <div className="upload-studio-group">
+                {hasStudioDesign && (
+                  <section className="upload-design-details">
+                    <h2>Design details</h2>
+                    <div>
+                      {[["Shape", "Almond"], ["Length", "Medium-long"], ["Base color", "Cream almond gray"], ["Finish", "Sheer ombre"]].map(([label, value]) => (
+                        <div key={label}><small>{label}</small><strong>{value}</strong></div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+                <section className="upload-studio">
+                  <div>
+                    <div className="upload-studio-title"><h2>{hasStudioDesign ? "Edit this design" : "Create with this design"}</h2>{!hasStudioDesign && <span>Try it · Optional</span>}</div>
+                    <p>{hasStudioDesign ? "Continue editing the linked design in Design Studio." : "Use your photos as references to build an editable nail design."}</p>
+                    <button type="button" disabled={!photos.length}>{hasStudioDesign ? "Edit in Design Studio" : "Open in Design Studio"}</button>
+                  </div>
+                  {hasStudioDesign ? (
+                    <div className="upload-studio-preview generated" aria-label="Generated Design Studio preview">
+                      <div className="studio-preview-placeholder"><img src={`${A}286e8.svg`} alt="" /><span>Design preview</span></div>
+                    </div>
+                  ) : (
+                    <div className="upload-studio-preview"><i><img src={`${A}aab04.svg`} alt="" /></i><strong>Studio highlights</strong><small>GIF preview</small></div>
+                  )}
+                </section>
+              </div>
+            </section>
+          </div>
+        </div>
+        <footer className="upload-footer">
+          {status && <span role="status">{status}</span>}
+          <button type="button" onClick={() => navigate(editing ? "profile/published" : "community")}>Cancel</button>
+          {!editing && <button type="button" onClick={() => setStatus("Saved to Unpublished")}>Save to Unpublished</button>}
+          <button type="button" className="primary" disabled={!canSubmit} onClick={() => navigate("upload/success")}>{editing ? "Save changes" : "Submit"}</button>
+        </footer>
+      </main>
+    </Shell>
+  );
+}
+
+function UploadSuccessPage({ navigate }: { navigate: Navigate }) {
+  useEffect(() => {
+    const redirect = window.setTimeout(() => navigate("profile"), 3000);
+    return () => window.clearTimeout(redirect);
+  }, [navigate]);
+
+  return (
+    <Shell navigate={navigate}>
+      <main className="upload-success">
+        <section role="status" aria-live="polite">
+          <i><img src={`${A}12d06.svg`} alt="" /></i>
+          <h1>Submitted successfully</h1>
+          <p>Your design is waiting for review.</p>
+          <small>We’ll notify you of the review result in Message Center. Taking you to your profile shortly.</small>
+        </section>
+      </main>
+    </Shell>
+  );
+}
+
 function CategoryDesignCard({ index, navigate, tags = GENERIC_TAGS, heartIcon }: { index: number; navigate: Navigate; tags?: readonly string[]; heartIcon?: string }) {
   const [liked, setLiked] = useState(false);
   return (
-    <article className="category-design-card" role="link" tabIndex={0} onClick={() => navigate("design/Nail Design Title")} onKeyDown={(event) => event.key === "Enter" && navigate("design/Nail Design Title")}>
-      <div className="category-design-image">image</div>
+    <article className="category-design-card">
+      <button type="button" className="category-design-image design-image-link" onClick={() => navigate(index === 0 ? "design/photo-upload-example" : "design/Nail Design Title")} aria-label="Open Nail Design Title">image</button>
       <div className="category-design-copy">
         <strong>Nail Design Title</strong>
         <div className="category-design-tags">{tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
         <div className="category-design-footer">
           <UserHover><button type="button" className="category-author" onClick={(event) => { event.stopPropagation(); navigate("creator/username"); }}><i>U</i>Username</button></UserHover>
-          <button type="button" className={liked ? "category-like active" : "category-like"} onClick={(event) => { event.stopPropagation(); setLiked(!liked); }}><img src={heartIcon || `${A}category-heart-${index % 2 ? "b" : "a"}.svg`} alt="" />{liked ? "1.3K" : "1.2K"}</button>
+          <button type="button" aria-label={liked ? "Unlike design" : "Like design"} aria-pressed={liked} className={liked ? "category-like like-control active" : "category-like like-control"} onClick={(event) => { event.stopPropagation(); setLiked(!liked); }}><img src={liked ? C.cardHeartFilled : heartIcon || `${A}category-heart-${index % 2 ? "b" : "a"}.svg`} alt="" />{liked ? "1.3K" : "1.2K"}</button>
         </div>
       </div>
     </article>
@@ -739,6 +989,7 @@ function SearchResultsPage({ initial, navigate }: { initial: SearchState; naviga
   const [searchState, setSearchState] = useState(initial);
   const [sort, setSort] = useState("Most relevant");
   const [sortOpen, setSortOpen] = useState(false);
+  usePageBlankDismiss(sortOpen, () => setSortOpen(false));
   const applied = (["shape", "style", "occasion"] as const).filter((kind) => searchState[kind]);
   const labels: Record<FilterKind, string> = { shape: "Shape", style: "Style", occasion: "Occasion" };
   const tags = (["shape", "style", "occasion"] as const).map((kind) => searchState[kind] || labels[kind]);
@@ -814,7 +1065,7 @@ function Community({ navigate }: { navigate: Navigate }) {
               </div>
             </section>
             <section className="community-section">
-              <SectionHeading title="Trending designs" subtitle="Discover the community's latest favorites" action="View all →" />
+              <SectionHeading title="Studio Spotlight" subtitle="Official tutorials and exclusive designs from featured creators." action="View all →" />
               <div className="popular-grid">{popular.map((item) => <DesignCard item={item} prominent key={item[0]} onOpen={() => open(item)} />)}</div>
             </section>
             <section className="community-section">
@@ -932,7 +1183,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-type DetailReply = { id: number; name: string; text: string; time: string; likes: number; creator?: boolean };
+type DetailReply = { id: number; name: string; text: string; time: string; likes: number; liked?: boolean; creator?: boolean };
 type DetailComment = { id: number; name: string; text: string; time: string; likes: number; images?: number; liked?: boolean; replies?: DetailReply[] };
 type ModerationView = "report" | "submitted" | "block";
 
@@ -1010,16 +1261,18 @@ function ModerationDialog({ view, onClose, onSubmit, onManage, target = "design"
   );
 }
 
-function DesignDetail({ navigate, own = false, editMode = false, focusComments = false }: { navigate: Navigate; own?: boolean; editMode?: boolean; focusComments?: boolean }) {
+type ProfileReturnSection = "liked" | "collections" | "history";
+
+function DesignDetail({ navigate, own = false, focusComments = false, photoOnly = false, returnSection }: { navigate: Navigate; own?: boolean; focusComments?: boolean; photoOnly?: boolean; returnSection?: ProfileReturnSection }) {
   const [thumb, setThumb] = useState(0);
   const [lightbox, setLightbox] = useState(false);
   const [liked, setLiked] = useState(false);
   const [saved, setSaved] = useState(false);
   const [following, setFollowing] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(editMode);
   const [makerDialog, setMakerDialog] = useState(false);
   const [shareDialog, setShareDialog] = useState(false);
   const [moreMenu, setMoreMenu] = useState(false);
+  const [ownHidden, setOwnHidden] = useState(false);
   const [moderationView, setModerationView] = useState<ModerationView | null>(null);
   const [draft, setDraft] = useState("");
   const [composerOpen, setComposerOpen] = useState(false);
@@ -1030,6 +1283,12 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
   const [postedCount, setPostedCount] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  usePageBlankDismiss(moreMenu, () => setMoreMenu(false));
+  usePageBlankDismiss(composerOpen, () => {
+    setComposerOpen(false);
+    setReplyTo(null);
+    textarea.current?.blur();
+  });
   const [comments, setComments] = useState<DetailComment[]>([
     { id: 1, name: "Username", text: "XXXXXXXXXXXXXXXXXXXXXXXXXXXX", time: "2 days ago", likes: 24, images: 2 },
     { id: 2, name: "Username", text: "XXXXXXXXXXXXXXXX", time: "1 day ago", likes: 11, replies: [{ id: 21, name: "Username", text: "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", time: "20 hours ago", likes: 8, creator: true }] },
@@ -1066,7 +1325,25 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
     ]);
     setShowMore(true);
   };
+  const toggleReplyLike = (commentId: number, replyId: number) => {
+    setComments((current) => current.map((comment) => comment.id === commentId
+      ? { ...comment, replies: comment.replies?.map((reply) => reply.id === replyId ? { ...reply, liked: !reply.liked } : reply) }
+      : comment));
+  };
   const visibleComments = [...comments];
+  const designDetails: readonly (readonly [string, string])[] | "" = photoOnly
+    ? ""
+    : [["Shape", "Almond"], ["Length", "Medium-long"], ["Base color", "Cream almond gray"], ["Finish", "Sheer ombre"]];
+  const backRoute = own ? "profile" : returnSection ? `profile/${returnSection}` : "community";
+  const backLabel = own
+    ? "Back to my profile"
+    : returnSection === "liked"
+      ? "Back to liked designs"
+      : returnSection === "collections"
+        ? "Back to collected designs"
+        : returnSection === "history"
+          ? "Back to history"
+          : "Back to community";
   if (!sortLatest) visibleComments.reverse();
   useEffect(() => {
     if (!focusComments) return;
@@ -1075,7 +1352,7 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
   return (
     <Shell navigate={navigate}>
       <main className="detail-page">
-        <button className="back-link" onClick={() => navigate("community")}><img src={C.back} alt="" />Back to community</button>
+        <button className="back-link" onClick={() => navigate(backRoute)}><img src={C.back} alt="" />{backLabel}</button>
         <section className="detail-card">
           <div className="detail-media">
             <button className="detail-preview" onClick={() => setLightbox(true)} aria-label="View large image"><span>Nail design preview</span></button>
@@ -1084,43 +1361,56 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
           <div className="detail-info">
             <div className="detail-title-row">
               <h1>Moonlight Almond Ombre</h1>
-              {own ? (
-                <div className="owner-design-actions"><span>Published</span><button type="button" onClick={() => setEditorOpen(!editorOpen)}>Edit & publish</button></div>
-              ) : (
-                <div className="detail-more-wrap">
-                  <button type="button" className="detail-more" aria-label="More options" aria-expanded={moreMenu} onClick={() => setMoreMenu(!moreMenu)}><img src={`${A}48a1a.svg`} alt="" /></button>
-                  {moreMenu && (
-                    <div className="detail-more-menu">
-                      <button type="button" onClick={() => { setMoreMenu(false); setModerationView("report"); }}><img src={`${A}d0478.svg`} alt="" />Report design</button>
-                      <button type="button" onClick={() => { setMoreMenu(false); setModerationView("block"); }}><img src={`${A}74961.svg`} alt="" />Block creator</button>
-                    </div>
-                  )}
-                </div>
-              )}
+              <div className="detail-more-wrap">
+                <button type="button" className="detail-more" aria-label="More options" aria-expanded={moreMenu} onClick={() => setMoreMenu(!moreMenu)}><img src={`${A}48a1a.svg`} alt="" /></button>
+                {moreMenu && (
+                  <div className="detail-more-menu">
+                    {own ? (
+                      <>
+                        <button type="button" onClick={() => { setOwnHidden(!ownHidden); setMoreMenu(false); }}><img src={`${A}${ownHidden ? "profile-hide.svg" : "profile-visible.svg"}`} alt="" />{ownHidden ? "Show design" : "Hide design"}</button>
+                        <button type="button" onClick={() => navigate("my-design/Nail Design Title/edit")}><img src={`${A}profile-edit.svg`} alt="" />Edit design</button>
+                        <button type="button" onClick={() => navigate("profile/published")}><img src={`${A}d0478.svg`} alt="" />Delete design</button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => { setMoreMenu(false); setModerationView("report"); }}><img src={`${A}d0478.svg`} alt="" />Report design</button>
+                        <button type="button" onClick={() => { setMoreMenu(false); setModerationView("block"); }}><img src={`${A}74961.svg`} alt="" />Block creator</button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            {own && editorOpen && <div className="owner-publish-panel"><div><strong>Edit & publish</strong><small>Published · Public</small></div><button type="button" onClick={() => setEditorOpen(false)}>Save & publish</button></div>}
             <div className="detail-author">
               {own
                 ? <button type="button" className="creator-entry" onClick={() => navigate("profile/published")}><i>L</i><span><strong>Luna Nail Lab</strong><small>3 days ago <b>·</b> Shanghai <b>·</b> 86 designs</small></span></button>
                 : <UserHover><button type="button" className="creator-entry" onClick={() => navigate("creator/username")}><i>L</i><span><strong>Luna Nail Lab</strong><small>3 days ago <b>·</b> Shanghai <b>·</b> 86 designs</small></span></button></UserHover>}
-              {own ? <span className="owner-design-label">Your design</span> : <button className="follow-sm" onClick={() => setFollowing(!following)}>{following ? "Following" : "+ Follow"}</button>}
+              {!own && <button className="follow-sm" onClick={() => setFollowing(!following)}>{following ? "Following" : "+ Follow"}</button>}
             </div>
             <div className="detail-stats">
               <div>
-                <button onClick={() => setLiked(!liked)} className={liked ? "on" : ""}><img src={C.heartLg} alt="" />{liked ? "2,487" : "2,486"}</button>
+                <button aria-label={liked ? "Unlike design" : "Like design"} aria-pressed={liked} onClick={() => setLiked(!liked)} className={liked ? "like-control on" : "like-control"}><img src={liked ? C.cardHeartFilled : C.heartLg} alt="" />{liked ? "2,487" : "2,486"}</button>
                 <button onClick={() => document.getElementById("design-comments")?.scrollIntoView({ behavior: "smooth", block: "start" })}><img src={C.message} alt="" />{128 + postedCount}</button>
               </div>
               <div>
-                <button onClick={() => setSaved(!saved)} className={saved ? "on" : ""}><img src={C.save} alt="" />{saved ? "Saved" : "Save"}</button>
+                <button aria-label={saved ? "Remove from collected" : "Collect design"} aria-pressed={saved} onClick={() => setSaved(!saved)} className={saved ? "save-control on" : "save-control"}><img src={saved ? C.cardSaveFilled : C.save} alt="" />{saved ? "Collected" : "Collect"}</button>
                 <button onClick={() => setShareDialog(true)}><img src={C.share} alt="" />Share</button>
               </div>
             </div>
-            <div className="detail-tags">{["Moonlight ombre", "Soft French", "Workwear", "Almond"].map((t) => <span key={t}>{t}</span>)}</div>
-            <div className="detail-about"><h3>About this design</h3><p>XXXXXXXX<br />XXXXXXXXXXXXXXXXXXXX<br />XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX</p></div>
-            <div className="detail-specs"><h3>Design details</h3><div>{[["Shape", "Almond"], ["Length", "Medium-long"], ["Base color", "Cream almond gray"], ["Finish", "Sheer ombre"]].map(([k, v]) => <div key={k}><small>{k}</small><b>{v}</b></div>)}</div></div>
+            <div className="detail-metadata">
+              <div className="detail-overview">
+                <div className="detail-tags">{GENERIC_TAGS.map((tag) => <span key={tag}>{tag}</span>)}</div>
+                <div className="detail-about"><h3>About this design</h3><p>XXXXXXXX<br />XXXXXXXXXXXXXXXXXXXX<br />XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX</p></div>
+                <div className="detail-origin">
+                  <div><small>Originality</small><strong>Original work</strong></div>
+                  <div><small>Source</small><strong>{photoOnly ? "Uploaded photos" : "Design Studio"}</strong></div>
+                </div>
+              </div>
+              <div className={designDetails ? "detail-specs" : "detail-specs empty"}><h3>Design details</h3>{designDetails ? <div>{designDetails.map(([key, value]) => <div key={key}><small>{key}</small><b>{value}</b></div>)}</div> : <div className="detail-details-empty"><span>—</span><p>This design was uploaded as photos and has no linked Design Studio details.</p></div>}</div>
+            </div>
             <div className="detail-create">
-              <div><h3>Create from this design</h3><p>Keep this design and make it your own.</p></div>
-              <button className="primary">Open in Design Studio <span>→</span></button>
+              <div><h3>{photoOnly ? "Create with these photos" : "Create from this design"}</h3><p>{photoOnly ? "Use the uploaded photos as references for a new editable design." : "Keep this design and make it your own."}</p></div>
+              <button className="primary">{photoOnly ? "Start in Design Studio" : "Open in Design Studio"} <span>→</span></button>
               <button className="secondary" onClick={() => setMakerDialog(true)}>Send to maker</button>
             </div>
           </div>
@@ -1129,7 +1419,7 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
           <section className="comments" id="design-comments">
             <div className="comments-head"><h2>Comments <span>{128 + postedCount}</span></h2><button type="button" onClick={() => setSortLatest(!sortLatest)}>{sortLatest ? "Latest" : "Oldest"}<img src={C.chevron} alt="" /></button></div>
             <div className={composerOpen ? "comment-form focused" : "comment-form"}>
-              <div><i>U</i><textarea ref={textarea} value={draft} onFocus={() => setComposerOpen(true)} onChange={(event) => setDraft(event.target.value)} placeholder={replyTo ? "Write a reply…" : "Write a comment…"} /></div>
+              <div><i>U</i><div className="comment-input-wrap"><textarea ref={textarea} maxLength={300} value={draft} onFocus={() => setComposerOpen(true)} onChange={(event) => setDraft(event.target.value)} placeholder={replyTo ? "Write a reply…" : "Write a comment…"} /><small className="comment-count">{draft.length}/300</small></div></div>
               {attachments.length > 0 && <div className="composer-images">{attachments.map((name, index) => <span key={`${name}-${index}`}>image<button type="button" aria-label={`Remove ${name}`} onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div>}
               {composerOpen ? (
                 <div className="comment-form-actions">
@@ -1146,14 +1436,14 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
                   <UserHover><strong>{c.name}</strong></UserHover>
                   <p>{c.text}</p>
                   {c.images && <div className={`comment-imgs n${c.images}`}>{Array.from({ length: c.images }, (_, k) => <span key={k} />)}</div>}
-                  <div className="comment-meta"><small>{c.time}</small><div><button type="button" className={c.liked ? "comment-like on" : "comment-like"} onClick={() => setComments((current) => current.map((comment) => comment.id === c.id ? { ...comment, liked: !comment.liked } : comment))}><img src={C.heartSm} alt="" />{c.likes + (c.liked ? 1 : 0)}</button><button type="button" onClick={() => beginReply(c.id)}>Reply</button></div></div>
+                  <div className="comment-meta"><small>{c.time}</small><div><button type="button" aria-label={c.liked ? "Unlike comment" : "Like comment"} aria-pressed={Boolean(c.liked)} className={c.liked ? "comment-like like-control on" : "comment-like like-control"} onClick={() => setComments((current) => current.map((comment) => comment.id === c.id ? { ...comment, liked: !comment.liked } : comment))}><img src={c.liked ? C.cardHeartFilled : C.heartSm} alt="" />{c.likes + (c.liked ? 1 : 0)}</button><button type="button" onClick={() => beginReply(c.id)}>Reply</button></div></div>
                   {c.replies?.map((reply) => (
                     <div className="comment reply" key={reply.id}>
                       <UserHover className="comment-user-avatar"><i>U</i></UserHover>
                       <div className="comment-body">
                         <UserHover><strong>{reply.name}{reply.creator && <em>Creator</em>}</strong></UserHover>
                         <p>{reply.text}</p>
-                        <div className="comment-meta"><small>{reply.time}</small><div><span><img src={C.heartXs} alt="" />{reply.likes}</span><button type="button" onClick={() => beginReply(c.id)}>Reply</button></div></div>
+                        <div className="comment-meta"><small>{reply.time}</small><div><button type="button" aria-label={reply.liked ? "Unlike reply" : "Like reply"} aria-pressed={Boolean(reply.liked)} className={reply.liked ? "comment-like like-control on" : "comment-like like-control"} onClick={() => toggleReplyLike(c.id, reply.id)}><img src={reply.liked ? C.cardHeartFilled : C.heartXs} alt="" />{reply.likes + (reply.liked ? 1 : 0)}</button><button type="button" onClick={() => beginReply(c.id)}>Reply</button></div></div>
                       </div>
                     </div>
                   ))}
@@ -1169,7 +1459,7 @@ function DesignDetail({ navigate, own = false, editMode = false, focusComments =
         </div>
       </main>
       {lightbox && <Lightbox index={thumb} setIndex={setThumb} onClose={() => setLightbox(false)} />}
-      {makerDialog && <ContactDialog mode="maker" onClose={() => setMakerDialog(false)} onChoose={(name) => navigate(`messages/${encodeURIComponent(name)}`)} />}
+      {makerDialog && <ContactDialog mode="maker" onClose={() => setMakerDialog(false)} onChoose={(name) => navigate(`messages/${encodeURIComponent(name)}/share-design`)} />}
       {shareDialog && <ShareDialog onClose={() => setShareDialog(false)} />}
       {moderationView && <ModerationDialog view={moderationView} onClose={() => setModerationView(null)} onSubmit={() => setModerationView("submitted")} onManage={() => navigate("account/privacy")} />}
     </Shell>
@@ -1244,8 +1534,8 @@ const initialConversations: Conversation[] = [
   { name: "Nail Studio", time: "08:42", preview: "One weekend appointment is still available.", unread: true },
 ];
 
-type NotificationSection = "all" | "likes" | "comments" | "followers" | "system";
-type NotificationKind = "like" | "save" | "comment" | "follow" | "system";
+type NotificationSection = "all" | "likes" | "comments" | "followers" | "system" | "device";
+type NotificationKind = "like" | "save" | "comment" | "follow" | "system" | "device";
 type NotificationEntry = {
   id: number;
   kind: NotificationKind;
@@ -1264,7 +1554,7 @@ type NotificationEntry = {
 
 const notificationNav: readonly [NotificationSection, string, string][] = [
   ["all", "All notifications", "notify-fe4ef.svg"],
-  ["likes", "Likes & saves", "notify-29efd.svg"],
+  ["likes", "Likes & collections", "notify-29efd.svg"],
   ["comments", "Comments & replies", "notify-9ade9.svg"],
   ["followers", "New followers", "notify-29a71.svg"],
   ["system", "System updates", "notify-c519d.svg"],
@@ -1272,18 +1562,42 @@ const notificationNav: readonly [NotificationSection, string, string][] = [
 
 const initialNotifications: NotificationEntry[] = [
   { id: 1, kind: "like", message: "Username liked your design “Nail Design Title”", time: "Just now", group: "Today", unread: true, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
-  { id: 2, kind: "save", message: "Username saved your design “Nail Design Title”", time: "10 minutes ago", group: "Today", unread: true, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
+  { id: 2, kind: "save", message: "Username collected your design “Nail Design Title”", time: "10 minutes ago", group: "Today", unread: true, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
   { id: 3, kind: "comment", message: "Username commented on your design: “XXXXXXXXXX”", time: "10 minutes ago", group: "Today", unread: true, thumbnail: true, target: { type: "own-design", id: "Nail Design Title", anchor: "comments" } },
   { id: 4, kind: "follow", message: "Username followed you", time: "1 hour ago", group: "Today", unread: true, target: { type: "creator", id: "username" } },
   { id: 5, kind: "system", message: "System update: Your design was approved and is now public.", time: "1 hour ago", group: "Today", unread: false, target: { type: "own-design", id: "Nail Design Title" } },
   { id: 6, kind: "system", message: "System update: Your design was approved and is now public.", time: "Yesterday, 14:30", group: "Yesterday", unread: true, target: { type: "own-design", id: "Nail Design Title" } },
   { id: 7, kind: "like", message: "Username liked your design “Nail Design Title”", time: "Yesterday, 09:15", group: "Yesterday", unread: false, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
-  { id: 8, kind: "save", message: "Username saved your design “Nail Design Title”", time: "Yesterday, 08:42", group: "Yesterday", unread: false, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
+  { id: 8, kind: "save", message: "Username collected your design “Nail Design Title”", time: "Yesterday, 08:42", group: "Yesterday", unread: false, thumbnail: true, target: { type: "own-design", id: "Nail Design Title" } },
   { id: 9, kind: "comment", message: "Username replied to your comment: “XXXXXXXX”", time: "Yesterday, 08:42", group: "Yesterday", unread: false, thumbnail: true, target: { type: "other-design", id: "Nail Design Title", anchor: "comments" } },
   { id: 10, kind: "follow", message: "Username followed you", time: "Yesterday, 09:15", group: "Yesterday", unread: false, following: true, target: { type: "creator", id: "username" } },
   { id: 11, kind: "follow", message: "Username followed you", time: "Yesterday, 08:42", group: "Yesterday", unread: false, target: { type: "creator", id: "username" } },
   { id: 12, kind: "like", message: "Username liked your comment on “Nail Design Title”", time: "Yesterday, 08:10", group: "Yesterday", unread: false, thumbnail: true, target: { type: "other-design", id: "Nail Design Title", anchor: "comments" } },
+  { id: 13, kind: "device", message: "Device update: Tint Nail Printer is connected and ready to use.", time: "Just now", group: "Today", unread: true },
 ];
+
+function NotificationQuickMenu({ navigate }: { navigate: Navigate }) {
+  const counts = ["5", "2", "1", "1", "1"];
+  return (
+    <div className="header-notification-wrap">
+      <button className="circle-button" aria-label="Notifications" onClick={() => navigate("notifications/all")}><img src={`${A}account-48ef5.svg`} alt="" /></button>
+      <div className="header-notification-menu" role="menu" aria-label="Notification shortcuts">
+        <section>
+          <strong>Notifications</strong>
+          {notificationNav.map(([key, label, icon], index) => <button type="button" role="menuitem" onClick={() => navigate(`notifications/${key}`)} key={key}><img src={`${A}${icon}`} alt="" /><span>{label}</span><i>{counts[index]}</i></button>)}
+        </section>
+        <section>
+          <strong>Messages</strong>
+          <button type="button" role="menuitem" onClick={() => navigate("messages")}><img src={`${A}notify-a268d.svg`} alt="" /><span>Messages</span></button>
+        </section>
+        <section>
+          <strong>Device</strong>
+          <button type="button" role="menuitem" onClick={() => navigate("notifications/device")}><img src={`${A}account-device-machine.svg`} alt="" /><span>Device information</span><i>1</i></button>
+        </section>
+      </div>
+    </div>
+  );
+}
 
 function NotificationSidebar({ active, navigate }: { active: NotificationSection | "messages"; navigate: Navigate }) {
   const counts = active === "all" ? ["5", "3", "2", "", ""] : ["5", "2", "1", "1", "1"];
@@ -1300,6 +1614,11 @@ function NotificationSidebar({ active, navigate }: { active: NotificationSection
       <button type="button" className={active === "messages" ? "active" : ""} onClick={() => navigate("messages")}>
         <img src={`${A}notify-a268d.svg`} alt="" /><span>Messages</span>
       </button>
+      <div className="notification-divider" />
+      <p>Device</p>
+      <button type="button" className={active === "device" ? "active" : ""} onClick={() => navigate("notifications/device")}>
+        <img src={`${A}account-device-machine.svg`} alt="" /><span>Device information</span><i>1</i>
+      </button>
     </aside>
   );
 }
@@ -1310,6 +1629,7 @@ const kindIcon: Record<NotificationKind, string> = {
   comment: "notify-15991.svg",
   follow: "notify-ed332.svg",
   system: "notify-48ef5.svg",
+  device: "account-device-machine.svg",
 };
 
 function NotificationRow({ item, onRead, onFollow, onOpen }: { item: NotificationEntry; onRead: () => void; onFollow: () => void; onOpen: () => void }) {
@@ -1323,7 +1643,7 @@ function NotificationRow({ item, onRead, onFollow, onOpen }: { item: Notificatio
     <button type="button" className={item.unread ? "notification-row unread" : "notification-row"} onClick={() => { onOpen(); onRead(); }}>
       <span className="notification-dot"><img src={`${A}${item.unread ? "notify-9063e.svg" : "notify-46e2e.svg"}`} alt="" /></span>
       <span className="notification-type"><img src={`${A}${kindIcon[item.kind]}`} alt="" /></span>
-      {item.kind === "system" ? <span className="notification-avatar system">T</span> : <span className="notification-avatar">U</span>}
+      {item.kind === "system" ? <span className="notification-avatar system">T</span> : item.kind === "device" ? <span className="notification-avatar device">D</span> : <span className="notification-avatar">U</span>}
       <span className="notification-copy"><strong>{item.message}</strong><small>{item.time}</small></span>
       {item.thumbnail && <span className="notification-thumbnail">image</span>}
       {item.kind === "follow" && <span role="button" className={following ? "follow-back following" : "follow-back"} onClick={follow}>{following ? "Following" : "Follow back"}</span>}
@@ -1338,14 +1658,16 @@ function NotificationsPage({ section, navigate }: { section: NotificationSection
     || (section === "likes" && (item.kind === "like" || item.kind === "save"))
     || (section === "comments" && item.kind === "comment")
     || (section === "followers" && item.kind === "follow")
-    || (section === "system" && item.kind === "system");
+    || (section === "system" && item.kind === "system")
+    || (section === "device" && item.kind === "device");
   const visible = items.filter(filter);
   const titles: Record<NotificationSection, string> = {
     all: "All notifications",
-    likes: "Likes & saves",
+    likes: "Likes & collections",
     comments: "Comments & replies",
     followers: "New followers",
     system: "System updates",
+    device: "Device information",
   };
   const unread = visible.filter((item) => item.unread).length;
   const markAll = () => setItems((current) => current.map((item) => filter(item) ? { ...item, unread: false } : item));
@@ -1389,7 +1711,16 @@ function NotificationsPage({ section, navigate }: { section: NotificationSection
   );
 }
 
-function MessagesPage({ navigate, initialContact }: { navigate: Navigate; initialContact?: string }) {
+function ChatDesignCard() {
+  return (
+    <div className="chat-design-card">
+      <span>image</span>
+      <div><strong>Nail Design Title</strong><small>Shape · Style · Occasion</small></div>
+    </div>
+  );
+}
+
+function MessagesPage({ navigate, initialContact, sharedDesign = false }: { navigate: Navigate; initialContact?: string; sharedDesign?: boolean }) {
   const isNewContact = Boolean(initialContact && !initialConversations.some((item) => item.name === initialContact));
   const [selected, setSelected] = useState(initialContact || "");
   const [dialog, setDialog] = useState(false);
@@ -1398,13 +1729,16 @@ function MessagesPage({ navigate, initialContact }: { navigate: Navigate; initia
   const [draft, setDraft] = useState("");
   const [sent, setSent] = useState<Record<string, string[]>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  const [pendingDesign, setPendingDesign] = useState(sharedDesign);
+  const [designSent, setDesignSent] = useState(false);
+  usePageBlankDismiss(moreMenu, () => setMoreMenu(false));
   const currentSent = selected ? sent[selected] || [] : [];
   const failedMessage = selected ? failed[selected] : "";
   const conversations: Conversation[] = isNewContact && initialContact
     ? [{
       name: initialContact,
         time: "New",
-        preview: failed[initialContact] ? `Not sent: ${failed[initialContact]}` : sent[initialContact]?.at(-1) || "Start a chat",
+        preview: failed[initialContact] ? `Not sent: ${failed[initialContact]}` : sent[initialContact]?.at(-1) || (designSent ? "Design shared" : "Start a chat"),
       }, ...initialConversations]
     : initialConversations;
   const choose = (name: string) => {
@@ -1441,7 +1775,7 @@ function MessagesPage({ navigate, initialContact }: { navigate: Navigate; initia
             {selected ? (
               <>
                 <header className="chat-head">
-                  <div><Avatar size={40} /><span><strong>{selected}</strong><small>{isNewContact ? "Shanghai · 86 designs" : "Online"}</small></span></div>
+                  <div><Avatar size={40} /><span><strong>{selected}</strong>{isNewContact && <small>Shanghai · 86 designs</small>}</span></div>
                   <div className="chat-head-actions">
                     <button type="button" aria-label="View profile" onClick={() => navigate("creator/username")}><img src={M.user} alt="" /></button>
                     <div className="chat-more-wrap" onBlur={(event) => !event.currentTarget.contains(event.relatedTarget) && setMoreMenu(false)}>
@@ -1462,11 +1796,14 @@ function MessagesPage({ navigate, initialContact }: { navigate: Navigate; initia
                       <div className="outgoing"><span>Yes, next Friday is available. You’re welcome to book!</span></div>
                     </>
                   )}
-                  {isNewContact && (currentSent.length > 0 || failedMessage) && <time>10:30</time>}
+                  {isNewContact && (designSent || currentSent.length > 0 || failedMessage) && <time>10:30</time>}
+                  {designSent && <div className="outgoing design-share-message"><ChatDesignCard /></div>}
+                  {designSent && currentSent.length === 0 && !failedMessage && <p className="message-limit">You can send 1 more text message until the other party follows or replies to you</p>}
                   {currentSent.map((message, index) => <div className="outgoing" key={`${message}-${index}`}><span>{message}</span></div>)}
                   {failedMessage && <div className="outgoing failed" role="status"><span>{failedMessage}<small>Not sent</small></span></div>}
-                  {failedMessage && <p className="message-limit">You can send at most 1 text message until the other party follows or replies to you</p>}
+                  {failedMessage && <p className="message-limit">You’ve reached the 1-message limit. You can send another message after the other party follows or replies to you.</p>}
                 </div>
+                {pendingDesign && <section className="chat-share-confirm"><header><div><strong>Send this design?</strong><small>Confirm before sharing it in this conversation.</small></div></header><ChatDesignCard /><div className="chat-share-actions"><button type="button" onClick={() => setPendingDesign(false)}>Cancel</button><button type="button" onClick={() => { setPendingDesign(false); setDesignSent(true); }}>Send design</button></div></section>}
                 <form className="chat-compose" onSubmit={(e) => { e.preventDefault(); send(); }}>
                   <button type="button" aria-label="Add image"><img src={M.image} alt="" /></button>
                   <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Write a message…" />
@@ -1586,7 +1923,7 @@ function NotificationsForm() {
   return (
     <div className="account-card preference-card">
       <div className="account-group notification-heading"><strong>Community notifications</strong><p>Preferences for Luna Nail Lab (@luna_naillab). These settings apply to in-app notifications only.</p></div>
-      <PreferenceRow title="Likes & saves" description="Get notified when someone likes or saves your nail designs." />
+      <PreferenceRow title="Likes & collections" description="Get notified when someone likes or collects your nail designs." />
       <PreferenceRow title="Comments & replies" description="Get notified about new comments on your designs and replies to your comments." />
       <PreferenceRow title="New followers" description="Get notified when someone follows Luna Nail Lab." />
       <PreferenceRow title="System updates" description="Receive general updates about community events, new features, and publishing." initial={false} />
@@ -1603,7 +1940,7 @@ function PrivacyForm() {
       <PreferenceRow title="Show location" description="Show Shanghai on your profile. Turning this off hides your location without deleting it." />
       <PreferenceRow title="Show bio & social links" description="Show your bio, Instagram URL, and website or other links on your profile." />
       <div className="account-group activity-heading"><strong>Activity visibility</strong></div>
-      <PreferenceRow title="Public saved designs" description="Let others view your saved nail designs from your profile. Turn off to keep them private." initial={false} />
+      <PreferenceRow title="Public collected designs" description="Let others view the nail designs you’ve collected from your profile. Turn off to keep them private." initial={false} />
       <PreferenceRow title="Public following list" description="Let others see who you follow. This does not change your follows or browsing." />
       <div className="account-note privacy-note"><strong>Unsaved demo preferences. These settings do not change the visibility of published designs, comments, or replies.</strong></div>
     </div>
@@ -1659,7 +1996,7 @@ function AccountPage({ section, navigate }: { section: AccountSection; navigate:
   );
 }
 
-type CreatorTab = "published" | "collections" | "likes" | "about";
+type CreatorTab = "published" | "collections" | "about";
 
 function CreatorSummary({ navigate }: { navigate: Navigate }) {
   const [following, setFollowing] = useState(false);
@@ -1681,60 +2018,79 @@ function CreatorSummary({ navigate }: { navigate: Navigate }) {
         <div><b>204</b><span>Following</span></div>
       </div>
       <div className="creator-counts">
-        {[["86", "Designs"], ["24K", "Likes"], ["5,801", "Saves"]].map(([value, label]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}
+        {[["86", "Designs"], ["5,801", "Collections"]].map(([value, label]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}
       </div>
     </aside>
   );
 }
 
-function CreatorDesignCard({ navigate, collection = false }: { navigate: Navigate; collection?: boolean }) {
-  return (
-    <article className="creator-design-card" role="link" tabIndex={0} onClick={() => navigate("design/Nail Design Title")} onKeyDown={(event) => event.key === "Enter" && navigate("design/Nail Design Title")}>
-      <div className="creator-design-image">image</div>
-      <div className="creator-design-copy">
-        <strong>{collection ? "Collection Title" : "Nail Design Title"}</strong>
-        <div>
-          {collection ? <span className="creator-description">XXXXX</span> : <span className="creator-tags"><i>Shape</i><i>Style</i><i>Occasion</i></span>}
-          <span className="creator-card-stats"><i><img src={`${A}creator-heart.svg`} alt="" />1.2K</i><i><img src={`${A}creator-bookmark.svg`} alt="" />1.2K</i></span>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function CreatorProfilePage({ navigate }: { navigate: Navigate }) {
   const [tab, setTab] = useState<CreatorTab>("published");
+  const [collectionView, setCollectionView] = useState<"designs" | "albums">("designs");
+  const [selectedPublicAlbum, setSelectedPublicAlbum] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"Latest" | "Most popular">("Latest");
   const [sortOpen, setSortOpen] = useState(false);
   const [visible, setVisible] = useState(6);
+  usePageBlankDismiss(sortOpen, () => setSortOpen(false));
   const cards = Array.from({ length: visible }, (_, index) => index).filter(() => `${tab} nail design title collection`.includes(query.trim().toLowerCase()));
-  const count = tab === "collections" ? "12 collections" : tab === "likes" ? "24K likes" : "86 designs";
+  const collectedCards = Array.from({ length: 9 }, (_, index) => index).filter(() => "nail design title collection".includes(query.trim().toLowerCase()));
+  const publicAlbums = ["Spring Ombre Collection", "Short French Nail Ideas", "Minimal Wedding Nails", "Soft Chrome Favorites", "Everyday Almond Looks", "Summer Color Ideas", "French Tip Inspiration", "Evening Shimmer"];
+  const visiblePublicAlbums = publicAlbums.map((name, index) => ({ name, index, designCount: [12, 8, 15, 9, 18][index % 5] })).filter((album) => album.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const activePublicAlbum = selectedPublicAlbum === null ? null : { name: publicAlbums[selectedPublicAlbum], index: selectedPublicAlbum, designCount: [12, 8, 15, 9, 18][selectedPublicAlbum % 5] };
   return (
     <Shell navigate={navigate}>
       <main className="creator-page">
         <CreatorSummary navigate={navigate} />
         <section className="creator-content">
           <header className="creator-tabs">
-            <nav>{(["published", "collections", "likes", "about"] as const).map((key) => <button type="button" className={tab === key ? "active" : ""} onClick={() => { setTab(key); setVisible(6); }} key={key}>{key[0].toUpperCase() + key.slice(1)}</button>)}</nav>
-            {tab !== "about" && <label className={query.trim() ? "active" : ""}><img src={`${A}creator-search.svg`} alt="" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search designs" /></label>}
+            <nav>{(["published", "collections", "about"] as const).map((key) => <button type="button" className={tab === key ? "active" : ""} onClick={() => { setTab(key); setVisible(6); setSelectedPublicAlbum(null); }} key={key}>{key[0].toUpperCase() + key.slice(1)}</button>)}</nav>
+            {tab !== "about" && <label className={query.trim() ? "active" : ""}><img src={`${A}creator-search.svg`} alt="" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={tab === "collections" && collectionView === "albums" ? "Search collection albums" : "Search designs"} /></label>}
           </header>
+          {tab === "collections" && selectedPublicAlbum === null && (
+            <div className="profile-subtabs">
+              <button type="button" className={collectionView === "designs" ? "active" : ""} onClick={() => setCollectionView("designs")}>Collected designs</button>
+              <button type="button" className={collectionView === "albums" ? "active" : ""} onClick={() => setCollectionView("albums")}>Collection albums</button>
+            </div>
+          )}
           {tab === "about" ? (
             <div className="creator-about">
               <h2>About Username</h2>
               <p>Original nail designs · New looks weekly · DM for collaborations</p>
               <dl><div><dt>Location</dt><dd>Shanghai</dd></div><div><dt>Joined</dt><dd>2022</dd></div></dl>
             </div>
+          ) : activePublicAlbum ? (
+            <div className="profile-collection-detail creator-collection-detail">
+              <header><button type="button" onClick={() => setSelectedPublicAlbum(null)}>← Collection albums</button><div><h2>{activePublicAlbum.name}</h2><small>Public · {activePublicAlbum.designCount} designs</small></div></header>
+              <div className="profile-design-grid">{Array.from({ length: Math.min(activePublicAlbum.designCount, 9) }, (_, index) => <ProfileDesignCard index={index} editable={false} initiallyLiked={false} initiallySaved removeOnUnsave={false} navigate={navigate} onDelete={() => {}} key={index} />)}</div>
+            </div>
+          ) : tab === "collections" && collectionView === "albums" ? (
+            <>
+              <strong className="profile-result-count">{visiblePublicAlbums.length} public collection albums</strong>
+              <div className="profile-album-grid">
+                {visiblePublicAlbums.map((album) => (
+                  <article className="profile-album" role="link" tabIndex={0} onClick={() => setSelectedPublicAlbum(album.index)} onKeyDown={(event) => event.target === event.currentTarget && event.key === "Enter" && setSelectedPublicAlbum(album.index)} key={album.name}>
+                    <div className="profile-album-image"><span>image</span></div>
+                    <section><strong>{album.name}</strong><p>{album.designCount} designs</p><small>Public · Updated Apr 12, 2025</small></section>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : tab === "collections" ? (
+            <>
+              <strong className="profile-result-count">{collectedCards.length} collected designs</strong>
+              <div className="profile-design-grid">{collectedCards.map((index) => <ProfileDesignCard index={index} editable={false} initiallyLiked={false} initiallySaved removeOnUnsave={false} navigate={navigate} onDelete={() => {}} key={index} />)}</div>
+            </>
           ) : (
             <>
               <div className="creator-toolbar">
-                <strong>{count}</strong>
+                <strong>86 designs</strong>
                 <div className="creator-sort">
                   <button type="button" onClick={() => setSortOpen(!sortOpen)}>{sort}<img src={`${A}creator-chevron.svg`} alt="" /></button>
                   {sortOpen && <div><button type="button" className={sort === "Latest" ? "active" : ""} onClick={() => { setSort("Latest"); setSortOpen(false); }}>Latest</button><button type="button" className={sort === "Most popular" ? "active" : ""} onClick={() => { setSort("Most popular"); setSortOpen(false); }}>Most popular</button></div>}
                 </div>
               </div>
-              <div className="creator-design-grid">{cards.map((index) => <CreatorDesignCard collection={tab === "collections"} navigate={navigate} key={index} />)}</div>
+              <div className="creator-design-grid">{cards.map((index) => <ProfileDesignCard index={index} editable={false} publishedInfo initiallyLiked={false} initiallySaved={false} removeOnUnsave={false} navigate={navigate} onDelete={() => {}} key={index} />)}</div>
               {visible < 9 && <button type="button" className="creator-more" onClick={() => setVisible(9)}>View more designs</button>}
             </>
           )}
@@ -1762,77 +2118,320 @@ function ProfileSummary({ navigate }: { navigate: Navigate }) {
       </div>
       <div className="profile-badge">
         <div><strong><img src={`${A}profile-badge.svg`} alt="" />Badge level</strong><button type="button">Details →</button></div>
-        <p><b>X</b> Rating</p>
-        <small>XXXXXXXXXXX</small>
+        <div className="profile-rating"><i>X</i><div><strong>Rating</strong><small>XXXXXXXXXXX</small></div></div>
       </div>
       <div className="profile-relations">
         <button type="button" onClick={() => navigate("profile/following")}><b>XXX</b><span>Following</span></button>
         <button type="button" onClick={() => navigate("profile/followers")}><b>XXX</b><span>Followers</span></button>
       </div>
       <div className="profile-totals">
-        {[["XXX", "Designs"], ["XXX", "Likes"], ["XXX", "Saves"]].map(([value, label]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}
+        {[["XXX", "Designs"], ["XXX", "Likes"], ["XXX", "Collections"]].map(([value, label]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}
       </div>
     </aside>
   );
 }
 
-function ProfileDesignCard({ index, editable, navigate }: { index: number; editable: boolean; navigate: Navigate }) {
+function ProfileQuickMenu({ navigate }: { navigate: Navigate }) {
+  return (
+    <div className="header-profile-wrap">
+      <button className="circle-button" aria-label="Profile" onClick={() => navigate("profile")}><img src={`${A}97eda.svg`} alt="" /></button>
+      <section className="header-profile-card" aria-label="Profile preview">
+        <header>
+          <span className="header-profile-avatar">U</span>
+          <div><strong>Username <i>✓</i></strong><small>@luna_naillab</small></div>
+        </header>
+        <p className="header-profile-bio">Original nail designs · New looks weekly · DM for collaborations</p>
+        <p className="header-profile-location"><img src={`${A}profile-location.svg`} alt="" />Shanghai <b>·</b> Joined in 2022</p>
+        <div className="header-profile-stats">
+          {[["XXX", "Designs"], ["XXX", "Likes"], ["XXX", "Collections"]].map(([value, label]) => <div key={label}><b>{value}</b><span>{label}</span></div>)}
+        </div>
+        <div className="header-profile-actions">
+          <button type="button" onClick={() => navigate("profile")}>View profile</button>
+          <button type="button" onClick={() => navigate("account/edit")}>Edit profile</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type PublicationStatus = "Draft";
+
+function ProfileDesignCard({ index, editable, unpublishedTools = false, publishedInfo = false, publicationStatus, initiallyLiked, initiallySaved, removeOnUnsave, returnSection, navigate, onDelete }: { index: number; editable: boolean; unpublishedTools?: boolean; publishedInfo?: boolean; publicationStatus?: PublicationStatus; initiallyLiked: boolean; initiallySaved: boolean; removeOnUnsave: boolean; returnSection?: ProfileReturnSection; navigate: Navigate; onDelete: (index: number) => void }) {
   const [hidden, setHidden] = useState(false);
   const [toolsDismissed, setToolsDismissed] = useState(false);
-  const cardClass = `profile-design-card${hidden ? " hidden-design" : ""}${toolsDismissed ? " tools-dismissed" : ""}`;
+  const [removeConfirm, setRemoveConfirm] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  const [liked, setLiked] = useState(initiallyLiked);
+  const [saved, setSaved] = useState(initiallySaved);
+  const [unsaving, setUnsaving] = useState(false);
+  usePageBlankDismiss(removeConfirm && !removing, () => setRemoveConfirm(false));
+  const cardClass = `profile-design-card${hidden ? " hidden-design" : ""}${toolsDismissed ? " tools-dismissed" : ""}${removeConfirm ? " delete-confirming" : ""}${exiting ? " deleting" : ""}`;
+  const confirmRemove = () => {
+    if (removing) return;
+    setRemoving(true);
+    window.setTimeout(() => setExiting(true), 180);
+    window.setTimeout(() => onDelete(index), 520);
+  };
+  const toggleSaved = () => {
+    if (unsaving) return;
+    if (saved && removeOnUnsave) {
+      setSaved(false);
+      setUnsaving(true);
+      window.setTimeout(() => setExiting(true), 120);
+      window.setTimeout(() => onDelete(index), 500);
+      return;
+    }
+    setSaved(!saved);
+  };
   return (
-    <article className={cardClass} onMouseLeave={() => setToolsDismissed(false)} onClick={() => !hidden && navigate(editable ? "my-design/Nail Design Title" : "design/Nail Design Title")} role="link" aria-disabled={hidden} tabIndex={0}>
+    <article className={cardClass} onMouseLeave={() => setToolsDismissed(false)}>
       <div className="profile-design-image">
-        <span>image</span>
-        {editable && (
+        <button type="button" className="profile-design-open design-image-link" disabled={hidden || removing || unsaving} onClick={() => navigate(editable || publicationStatus ? "my-design/Nail Design Title/edit" : `design/Nail Design Title${returnSection ? `/from-${returnSection}` : ""}`)} aria-label={publicationStatus ? "Open publishing draft" : "Open Nail Design Title"}><span>image</span></button>
+        {!editable && !publicationStatus && <button type="button" disabled={unsaving} aria-label={saved ? "Remove from collected" : "Collect design"} aria-pressed={saved} className={saved ? "card-save on" : "card-save"} onClick={toggleSaved}><img src={saved ? C.cardSaveFilled : C.cardSave} alt="" /></button>}
+        {(editable || unpublishedTools) && (
           <div className="profile-card-tools">
-            <button className={hidden ? "active" : ""} type="button" aria-label={hidden ? "Show design" : "Hide design"} aria-pressed={hidden} onClick={(event) => { event.stopPropagation(); if (hidden) { setHidden(false); setToolsDismissed(true); event.currentTarget.blur(); } else { setHidden(true); } }}><img src={`${A}${hidden ? "profile-hide.svg" : "profile-visible.svg"}`} alt="" /></button>
+            {editable && <button className={hidden ? "active" : ""} type="button" aria-label={hidden ? "Show design" : "Hide design"} aria-pressed={hidden} onClick={(event) => { event.stopPropagation(); if (hidden) { setHidden(false); setToolsDismissed(true); event.currentTarget.blur(); } else { setHidden(true); } }}><img src={`${A}${hidden ? "profile-hide.svg" : "profile-visible.svg"}`} alt="" /></button>}
             <button type="button" aria-label="Edit design" onClick={(event) => { event.stopPropagation(); navigate("my-design/Nail Design Title/edit"); }}><img src={`${A}profile-edit.svg`} alt="" /></button>
+            <button type="button" className="profile-card-delete" aria-label={unpublishedTools ? "Delete draft" : "Unpublish design"} aria-expanded={removeConfirm} onClick={(event) => { event.stopPropagation(); setRemoveConfirm(true); }}><img src={`${A}${unpublishedTools ? "profile-delete.svg" : "profile-unpublish.svg"}`} alt="" /></button>
+            {removeConfirm && (
+              <div className="profile-delete-popover" role="dialog" aria-label={unpublishedTools ? "Confirm draft deletion" : "Confirm design unpublishing"} onClick={(event) => event.stopPropagation()}>
+                <strong>{unpublishedTools ? "Are you sure you want to delete this draft?" : "Are you sure you want to unpublish this design?"}</strong>
+                <small>{unpublishedTools ? "This action cannot be undone." : "You can find it in Unpublished."}</small>
+                <div><button type="button" disabled={removing} onClick={() => setRemoveConfirm(false)}>Cancel</button><button type="button" className={removing ? "confirm-delete is-deleting" : "confirm-delete"} disabled={removing} aria-live="polite" onClick={confirmRemove}>{removing ? unpublishedTools ? "Deleting…" : "Unpublishing…" : unpublishedTools ? "Delete" : "Unpublish"}</button></div>
+              </div>
+            )}
           </div>
         )}
       </div>
       <div className="profile-design-info">
         <strong>Nail Design Title</strong>
         <div className="profile-design-tags"><span>Shape</span><span>Style</span><span>Occasion</span></div>
-        {(index < 3 || index === 8) && <div className="profile-design-meta"><UserHover className="profile-meta-user"><i>U</i>Username</UserHover><span><img src={`${A}profile-heart-small.svg`} alt="" />1.2K</span></div>}
+        {publicationStatus ? null : editable || publishedInfo ? <div className="profile-design-stats"><button type="button" aria-label={liked ? "Unlike design" : "Like design"} aria-pressed={liked} className={liked ? "profile-like like-control on" : "profile-like like-control"} onClick={() => setLiked(!liked)}><img src={liked ? C.cardHeartFilled : `${A}profile-heart-small.svg`} alt="" />1.2K</button><span className="profile-save-stat"><img src={C.cardSave} alt="" />1.2K</span></div> : <div className="profile-design-meta"><UserHover className="profile-meta-user"><i>U</i>Username</UserHover><button type="button" aria-label={liked ? "Unlike design" : "Like design"} aria-pressed={liked} className={liked ? "profile-like like-control on" : "profile-like like-control"} onClick={() => setLiked(!liked)}><img src={liked ? C.cardHeartFilled : `${A}profile-heart-small.svg`} alt="" />1.2K</button></div>}
       </div>
     </article>
   );
 }
 
-function ProfileDesignGrid({ section, query, navigate }: { section: "published" | "liked" | "history"; query: string; navigate: Navigate }) {
+function ProfileDesignGrid({ section, query, navigate, excluded, onUnpublish }: { section: "published" | "liked" | "history"; query: string; navigate: Navigate; excluded?: ReadonlySet<number>; onUnpublish?: (index: number) => void }) {
   const count = section === "history" ? 6 : 9;
-  const visible = Array.from({ length: count }, (_, index) => index).filter(() => "nail design title".includes(query.toLowerCase()));
+  const [deleted, setDeleted] = useState(() => new Set<number>());
+  const visible = Array.from({ length: count }, (_, index) => index).filter((index) => !deleted.has(index) && !excluded?.has(index) && "nail design title".includes(query.toLowerCase()));
+  const deleteDesign = (index: number) => {
+    setDeleted((current) => new Set(current).add(index));
+    onUnpublish?.(index);
+  };
   return (
     <>
       <strong className="profile-result-count">{visible.length} designs</strong>
-      <div className="profile-design-grid">{visible.map((index) => <ProfileDesignCard index={index} editable={section === "published"} navigate={navigate} key={index} />)}</div>
+      <div className="profile-design-grid">{visible.map((index) => <ProfileDesignCard index={index} editable={section === "published"} initiallyLiked={section === "liked"} initiallySaved={false} removeOnUnsave={false} returnSection={section === "published" ? undefined : section} navigate={navigate} onDelete={deleteDesign} key={index} />)}</div>
     </>
   );
 }
 
-function ProfileCollections({ query }: { query: string }) {
+function ProfilePublished({ query, navigate }: { query: string; navigate: Navigate }) {
+  const [unpublishedView, setUnpublishedView] = useState(false);
+  const [movedDrafts, setMovedDrafts] = useState(() => new Set<number>());
+  const [removedUnpublished, setRemovedUnpublished] = useState(() => new Set<number>());
+  const [visibleDrafts, setVisibleDrafts] = useState(6);
+  const draftSentinel = useRef<HTMLDivElement>(null);
+  const drafts = [
+    ...Array.from(movedDrafts, (index) => ({ key: `moved-${index}`, index, status: "Draft" as const })),
+    ...Array.from({ length: 12 }, (_, index) => ({ key: `draft-${index}`, index: index + 30, status: "Draft" as const })),
+  ].filter((draft) => !removedUnpublished.has(draft.index) && "nail design title".includes(query.toLowerCase()));
+  useEffect(() => setVisibleDrafts(6), [query]);
+  useEffect(() => {
+    if (!unpublishedView || visibleDrafts >= drafts.length || !draftSentinel.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisibleDrafts((current) => Math.min(current + 3, drafts.length));
+    }, { rootMargin: "120px" });
+    observer.observe(draftSentinel.current);
+    return () => observer.disconnect();
+  }, [drafts.length, unpublishedView, visibleDrafts]);
+  return (
+    <div className="profile-published-content">
+      <div className="profile-subtabs"><button className={!unpublishedView ? "active" : ""} type="button" onClick={() => setUnpublishedView(false)}>Published</button><button className={unpublishedView ? "active" : ""} type="button" onClick={() => setUnpublishedView(true)}>Unpublished</button></div>
+      {unpublishedView ? (
+        <div className="profile-unpublished-groups">
+          <section className="profile-unpublished-group">
+            <header><div><strong>Drafts</strong><span>{drafts.length}</span></div><small>Continue editing or submit a draft for review.</small></header>
+            <div className="profile-design-grid">{drafts.slice(0, visibleDrafts).map((draft) => <ProfileDesignCard index={draft.index} editable={false} unpublishedTools publicationStatus={draft.status} initiallyLiked={false} initiallySaved={false} removeOnUnsave={false} navigate={navigate} onDelete={(draftIndex) => setRemovedUnpublished((current) => new Set(current).add(draftIndex))} key={draft.key} />)}</div>
+            {visibleDrafts < drafts.length && <div className="profile-draft-sentinel" ref={draftSentinel}>Scroll to view more</div>}
+          </section>
+        </div>
+      ) : <ProfileDesignGrid section="published" query={query} navigate={navigate} excluded={movedDrafts} onUnpublish={(index) => setMovedDrafts((current) => new Set(current).add(index))} />}
+    </div>
+  );
+}
+
+type CollectionAlbumDraft = {
+  name: string;
+  description: string;
+  visibility: "public" | "private";
+};
+
+function CreateCollectionDialog({ defaultName, initialAlbum, onClose, onCreate }: {
+  defaultName: string;
+  initialAlbum?: CollectionAlbumDraft;
+  onClose: () => void;
+  onCreate: (album: CollectionAlbumDraft) => void;
+}) {
+  const [name, setName] = useState(initialAlbum?.name ?? "");
+  const [description, setDescription] = useState(initialAlbum?.description ?? "");
+  const [visibility, setVisibility] = useState<CollectionAlbumDraft["visibility"]>(initialAlbum?.visibility ?? "public");
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    onCreate({
+      name: name.trim() || defaultName,
+      description: description.trim(),
+      visibility,
+    });
+  };
+  return (
+    <div className="collection-dialog-overlay" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <form className="collection-dialog" role="dialog" aria-modal="true" aria-labelledby="collection-dialog-title" onSubmit={submit}>
+        <header>
+          <div>
+            <h2 id="collection-dialog-title">{initialAlbum ? "Edit collection album" : "Create collection album"}</h2>
+            <p>{initialAlbum ? "Update this collection album’s details and visibility." : "Organize your favorite nail designs in one collection album."}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"><img src={`${A}c1bc2.svg`} alt="" /></button>
+        </header>
+        <div className="collection-dialog-body">
+          <label className="collection-field">
+            <span>Collection album name</span>
+            <input autoFocus maxLength={50} value={name} onChange={(event) => setName(event.target.value)} placeholder={defaultName} />
+            <small>{name.length}/50</small>
+          </label>
+          <label className="collection-field">
+            <span>Description <small>Optional</small></span>
+            <textarea maxLength={200} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe what you’re collecting and why." />
+            <small>{description.length}/200</small>
+          </label>
+          <fieldset className="collection-visibility" aria-label="Collection album visibility">
+            <label>
+              <input type="radio" name="collection-visibility" value="public" checked={visibility === "public"} onChange={() => setVisibility("public")} />
+              <span><strong>Public</strong><small>Anyone can view this collection album.</small></span>
+            </label>
+            <label>
+              <input type="radio" name="collection-visibility" value="private" checked={visibility === "private"} onChange={() => setVisibility("private")} />
+              <span><strong>Private</strong><small>Only you can view this collection album.</small></span>
+            </label>
+          </fieldset>
+        </div>
+        <footer>
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit" className="primary">{initialAlbum ? "Save changes" : "Create collection album"}</button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+type CollectionAlbumItem = CollectionAlbumDraft & {
+  id: string;
+  created: boolean;
+  designCount: number;
+};
+
+function ProfileAlbumCard({ album, onOpen, onEdit, onDelete, onVisibilityChange }: {
+  album: CollectionAlbumItem;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onVisibilityChange: (visibility: CollectionAlbumDraft["visibility"]) => void;
+}) {
+  const [hidden, setHidden] = useState(album.visibility === "private");
+  const [toolsDismissed, setToolsDismissed] = useState(false);
+  const [removeConfirm, setRemoveConfirm] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [exiting, setExiting] = useState(false);
+  useEffect(() => setHidden(album.visibility === "private"), [album.visibility]);
+  usePageBlankDismiss(removeConfirm && !removing, () => setRemoveConfirm(false));
+  const confirmRemove = () => {
+    if (removing) return;
+    setRemoving(true);
+    window.setTimeout(() => setExiting(true), 180);
+    window.setTimeout(onDelete, 520);
+  };
+  return (
+    <article
+      className={`profile-album${hidden ? " hidden-album" : ""}${toolsDismissed ? " tools-dismissed" : ""}${removeConfirm ? " delete-confirming" : ""}${exiting ? " deleting" : ""}`}
+      role="link"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => event.target === event.currentTarget && event.key === "Enter" && onOpen()}
+      onMouseLeave={() => setToolsDismissed(false)}
+    >
+      <div className="profile-album-image">
+        <span>image</span>
+        <div className="profile-card-tools">
+          <button className={hidden ? "active" : ""} type="button" aria-label={hidden ? "Make collection album public" : "Make collection album private"} aria-pressed={hidden} onClick={(event) => { event.stopPropagation(); const nextHidden = !hidden; setHidden(nextHidden); onVisibilityChange(nextHidden ? "private" : "public"); if (!nextHidden) { setToolsDismissed(true); event.currentTarget.blur(); } }}><img src={`${A}${hidden ? "profile-hide.svg" : "profile-visible.svg"}`} alt="" /></button>
+          <button type="button" aria-label="Edit collection album" onClick={(event) => { event.stopPropagation(); onEdit(); }}><img src={`${A}profile-edit.svg`} alt="" /></button>
+          <button type="button" className="profile-card-delete" aria-label="Delete collection album" aria-expanded={removeConfirm} onClick={(event) => { event.stopPropagation(); setRemoveConfirm(true); }}><img src={`${A}profile-delete.svg`} alt="" /></button>
+          {removeConfirm && (
+            <div className="profile-delete-popover" role="dialog" aria-label="Confirm collection album deletion" onClick={(event) => event.stopPropagation()}>
+              <strong>Are you sure you want to delete this collection album?</strong>
+              <small>The designs inside it will remain collected.</small>
+              <div><button type="button" disabled={removing} onClick={() => setRemoveConfirm(false)}>Cancel</button><button type="button" className={removing ? "confirm-delete is-deleting" : "confirm-delete"} disabled={removing} onClick={confirmRemove}>{removing ? "Deleting…" : "Delete"}</button></div>
+            </div>
+          )}
+        </div>
+      </div>
+      <section><strong>{album.name}</strong><p>{album.designCount} designs</p><small>{hidden ? "Private" : "Public"} · {album.created ? "Created just now" : "Updated Apr 12, 2025"}</small></section>
+    </article>
+  );
+}
+
+function ProfileCollections({ query, navigate }: { query: string; navigate: Navigate }) {
   const [albums, setAlbums] = useState(false);
-  const [created, setCreated] = useState(false);
+  const [createDialog, setCreateDialog] = useState(false);
+  const [createdAlbums, setCreatedAlbums] = useState<CollectionAlbumDraft[]>([]);
+  const [albumOverrides, setAlbumOverrides] = useState<Record<string, CollectionAlbumDraft>>({});
+  const [deletedAlbums, setDeletedAlbums] = useState(() => new Set<string>());
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [editingAlbumId, setEditingAlbumId] = useState<string | null>(null);
+  const [removedDesigns, setRemovedDesigns] = useState(() => new Set<number>());
   const collectionNames = ["Spring Ombre Collection", "Short French Nail Ideas", "Cat-Eye Shimmer Collection", "Almond Nail Looks", "Seaside Nail Inspiration", "Cat-Eye Shimmer Collection", "Almond Nail Looks", "Seaside Nail Inspiration", "Cat-Eye Shimmer Collection", "Almond Nail Looks", "Seaside Nail Inspiration"];
-  const filtered = collectionNames.filter((name) => name.toLowerCase().includes(query.toLowerCase()));
+  const albumItems: CollectionAlbumItem[] = [
+    ...createdAlbums.map((album, index) => ({ ...album, id: `created-${index}`, created: true, designCount: 0 })),
+    ...collectionNames.map((name, index) => ({ name, description: "", visibility: "public" as const, id: `album-${index}`, created: false, designCount: [12, 8, 15, 9, 18][index % 5] })),
+  ].map((album) => ({ ...album, ...albumOverrides[album.id] }));
+  const filtered = albumItems.filter((album) => !deletedAlbums.has(album.id) && album.name.toLowerCase().includes(query.toLowerCase()));
+  const selectedAlbum = albumItems.find((album) => album.id === selectedAlbumId);
+  const editingAlbum = albumItems.find((album) => album.id === editingAlbumId);
+  const collectedDesigns = Array.from({ length: 9 }, (_, index) => index).filter((index) => !removedDesigns.has(index) && "nail design title".includes(query.toLowerCase()));
+  if (selectedAlbum) {
+    const visibleDesigns = Array.from({ length: Math.min(selectedAlbum.designCount, 9) }, (_, index) => index).filter(() => "nail design title".includes(query.toLowerCase()));
+    return (
+      <div className="profile-collection-detail">
+        <header><button type="button" onClick={() => setSelectedAlbumId(null)}>← Collection albums</button><div><h2>{selectedAlbum.name}</h2><small>{selectedAlbum.visibility === "private" ? "Private" : "Public"} · {selectedAlbum.designCount} designs</small></div></header>
+        {visibleDesigns.length ? <div className="profile-design-grid">{visibleDesigns.map((index) => <ProfileDesignCard index={index} editable={false} initiallyLiked={false} initiallySaved removeOnUnsave={false} returnSection="collections" navigate={navigate} onDelete={() => {}} key={index} />)}</div> : <div className="profile-collection-empty"><strong>No designs yet</strong><p>Collected designs added to this collection album will appear here.</p></div>}
+      </div>
+    );
+  }
   if (!albums) return (
     <div className="profile-collection-content">
-      <div className="profile-subtabs"><button className="active" type="button">Saved designs</button><button type="button" onClick={() => setAlbums(true)}>Collection albums</button></div>
-      <strong className="profile-result-count">9 designs</strong>
-      <div className="profile-design-grid">{Array.from({ length: 9 }, (_, index) => <div className="profile-design-card" key={index}><div className="profile-design-image"><span>image</span></div><div className="profile-design-info"><strong>Nail Design Title</strong><div className="profile-design-tags"><span>Shape</span><span>Style</span><span>Occasion</span></div></div></div>)}</div>
+      <div className="profile-subtabs"><button className="active" type="button">Collected designs</button><button type="button" onClick={() => setAlbums(true)}>Collection albums</button></div>
+      <strong className="profile-result-count">{collectedDesigns.length} designs</strong>
+      <div className="profile-design-grid">{collectedDesigns.map((index) => <ProfileDesignCard index={index} editable={false} initiallyLiked={false} initiallySaved removeOnUnsave returnSection="collections" navigate={navigate} onDelete={(designIndex) => setRemovedDesigns((current) => new Set(current).add(designIndex))} key={index} />)}</div>
     </div>
   );
   return (
     <div className="profile-collection-content">
-      <div className="profile-subtabs"><button type="button" onClick={() => setAlbums(false)}>Saved designs</button><button className="active" type="button">Collection albums</button></div>
-      <strong className="profile-result-count">{20 + (created ? 1 : 0)} albums</strong>
+      <div className="profile-subtabs"><button type="button" onClick={() => setAlbums(false)}>Collected designs</button><button className="active" type="button">Collection albums</button></div>
+      <strong className="profile-result-count">{20 + createdAlbums.length - deletedAlbums.size} albums</strong>
       <div className="profile-album-grid">
-        <button type="button" className="profile-new-album" onClick={() => setCreated(true)}><i><img src={`${A}profile-plus.svg`} alt="" /></i>{created && <span>New Collection created</span>}</button>
-        {filtered.map((name, index) => (
-          <article className="profile-album" key={`${name}-${index}`}><div>image</div><section><strong>{name}</strong><p>{[12, 8, 15, 9, 18][index % 5]} designs</p><small>Updated {index % 2 ? "Mar 28" : "Apr 12"}, 2025</small></section></article>
-        ))}
+        <button type="button" className="profile-new-album" onClick={() => setCreateDialog(true)} aria-label="Create a new collection album"><i><img src={`${A}profile-plus.svg`} alt="" /></i></button>
+        {filtered.map((album) => <ProfileAlbumCard album={album} onOpen={() => setSelectedAlbumId(album.id)} onEdit={() => setEditingAlbumId(album.id)} onDelete={() => setDeletedAlbums((current) => new Set(current).add(album.id))} onVisibilityChange={(visibility) => setAlbumOverrides((current) => ({ ...current, [album.id]: { name: album.name, description: album.description, visibility } }))} key={album.id} />)}
       </div>
+      {createDialog && <CreateCollectionDialog defaultName={`Default collection album ${createdAlbums.length + 1}`} onClose={() => setCreateDialog(false)} onCreate={(album) => { setCreatedAlbums((current) => [...current, album]); setCreateDialog(false); }} />}
+      {editingAlbum && <CreateCollectionDialog defaultName={editingAlbum.name} initialAlbum={editingAlbum} onClose={() => setEditingAlbumId(null)} onCreate={(album) => { setAlbumOverrides((current) => ({ ...current, [editingAlbum.id]: album })); setEditingAlbumId(null); }} />}
     </div>
   );
 }
@@ -1871,9 +2470,9 @@ function ProfilePage({ section, navigate }: { section: ProfileSection; navigate:
   const [query, setQuery] = useState("");
   const mainSection = section === "following" || section === "followers" ? "published" : section;
   const placeholders: Record<"published" | "liked" | "collections" | "history", string> = {
-    published: "Search published designs",
-    liked: "Search liked or saved designs",
-    collections: "Search liked or saved designs",
+    published: "Search your designs",
+    liked: "Search liked designs",
+    collections: "Search collected designs",
     history: "Search browsing history",
   };
   return (
@@ -1887,7 +2486,7 @@ function ProfilePage({ section, navigate }: { section: ProfileSection; navigate:
                 <nav>{(["published", "liked", "collections", "history"] as const).map((key) => <button type="button" className={mainSection === key ? "active" : ""} onClick={() => navigate(`profile/${key}`)} key={key}>{key[0].toUpperCase() + key.slice(1)}</button>)}</nav>
                 <label className={query.trim() ? "active" : ""}><img src={`${A}profile-search.svg`} alt="" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={placeholders[mainSection]} /></label>
               </header>
-              {mainSection === "collections" ? <ProfileCollections query={query} /> : <ProfileDesignGrid section={mainSection} query={query} navigate={navigate} />}
+              {mainSection === "published" ? <ProfilePublished query={query} navigate={navigate} /> : mainSection === "collections" ? <ProfileCollections query={query} navigate={navigate} /> : <ProfileDesignGrid section={mainSection} query={query} navigate={navigate} />}
             </>
           )}
         </section>
@@ -1914,6 +2513,17 @@ export default function App() {
   const [route, setRoute] = useState(getRoute);
 
   useEffect(() => {
+    const blurActiveControlOnBlank = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("button, a, input, textarea, select, label, [role='button'], [role='dialog'], [data-keep-active]")) return;
+      if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+    };
+    document.addEventListener("pointerdown", blurActiveControlOnBlank);
+    return () => document.removeEventListener("pointerdown", blurActiveControlOnBlank);
+  }, []);
+
+  useEffect(() => {
     const onHashChange = () => {
       setRoute(getRoute());
       window.scrollTo({ top: 0 });
@@ -1931,14 +2541,23 @@ export default function App() {
   const [section, ...rest] = route.split("/");
   const param = decodeURIComponent(rest.join("/"));
   if (section === "community") return <Community navigate={navigate} />;
+  if (section === "upload" && rest[0] === "success") return <UploadSuccessPage navigate={navigate} />;
+  if (section === "upload") return <UploadDesignPage navigate={navigate} />;
   if (section === "search") return <SearchResultsPage key={param} initial={parseSearchState(param)} navigate={navigate} />;
   if (section === "collection") return <CollectionPage key={param} id={param} navigate={navigate} />;
-  if (section === "design") return <DesignDetail key={route} focusComments={rest.at(-1) === "comments"} navigate={navigate} />;
-  if (section === "my-design") return <DesignDetail key={route} own editMode={rest.at(-1) === "edit"} focusComments={rest.at(-1) === "comments"} navigate={navigate} />;
-  if (section === "messages") return <MessagesPage key={param} initialContact={param || undefined} navigate={navigate} />;
+  if (section === "design") {
+    const returnToken = rest.find((part) => part.startsWith("from-"))?.replace("from-", "");
+    const returnSection = (["liked", "collections", "history"] as const).find((item) => item === returnToken);
+    return <DesignDetail key={route} photoOnly={rest[0] === "photo-upload-example"} returnSection={returnSection} focusComments={rest.at(-1) === "comments"} navigate={navigate} />;
+  }
+  if (section === "my-design") {
+    if (rest.at(-1) === "edit") return <UploadDesignPage key={route} navigate={navigate} editing studioEdited />;
+    return <DesignDetail key={route} own photoOnly={rest[0] === "photo-upload-example"} focusComments={rest.at(-1) === "comments"} navigate={navigate} />;
+  }
+  if (section === "messages") return <MessagesPage key={route} initialContact={rest[0] ? decodeURIComponent(rest[0]) : undefined} sharedDesign={rest[1] === "share-design"} navigate={navigate} />;
   if (section === "notifications") {
     const notificationSection = (rest[0] || "all") as NotificationSection;
-    return <NotificationsPage section={notificationNav.some(([key]) => key === notificationSection) ? notificationSection : "all"} navigate={navigate} />;
+    return <NotificationsPage section={notificationSection === "device" || notificationNav.some(([key]) => key === notificationSection) ? notificationSection : "all"} navigate={navigate} />;
   }
   if (section === "account") {
     const accountSection = (rest[0] || "edit") as AccountSection;
